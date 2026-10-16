@@ -43,7 +43,16 @@ curl -s -H "Authorization: Bearer Oracle" http://169.254.169.254/opc/v2/instance
                   # displayName, canonicalRegionName 이 보이면 시연 배지가 동작함
 ```
 
-## 2. Docker 설치 (두 서버 모두)
+## 2. git · Docker 설치 (두 서버 모두)
+
+Oracle Linux에는 git이 기본으로 없어요. 먼저 git부터:
+
+```bash
+sudo dnf install -y git
+git --version
+```
+
+그다음 Docker:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/hacksungboo/verify_infra/main/scripts/install-docker.sh | bash

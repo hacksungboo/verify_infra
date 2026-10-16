@@ -10,8 +10,8 @@ fi
 echo "[1/4] podman 등 충돌 패키지 제거 (Oracle Linux 9 기본 포함)"
 sudo dnf remove -y podman podman-docker buildah runc containers-common 2>/dev/null || true
 
-echo "[2/4] Docker CE 저장소 추가"
-sudo dnf install -y dnf-utils
+echo "[2/4] Docker CE 저장소 추가 (git도 함께 설치)"
+sudo dnf install -y dnf-utils git
 sudo dnf config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
 
 echo "[3/4] 설치"
