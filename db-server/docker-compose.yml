@@ -1,0 +1,34 @@
+# Verifi DB 서버 (예: team-4-2, 131.186.25.47)
+# Oracle Database 23ai Free — AI Vector Search(VECTOR 타입) 내장. x86_64 / arm64 모두 지원.
+#
+# 실행:  cp .env.example .env  →  docker compose up -d  →  docker compose logs -f oracle
+#        "DATABASE IS READY TO USE!" 가 보이면 준비 완료 (첫 기동 2~5분)
+
+name: verifi-db
+
+services:
+  oracle:
+    image: gvenzl/oracle-free:23-slim
+    container_name: verifi-oracle
+    hostname: ${DB_HOSTNAME:-verifi-db}
+    restart: unless-stopped
+    environment:
+      ORACLE_PASSWORD: ${ORACLE_PASSWORD:?ORACLE_PASSWORD를 .env에 넣으세요}
+      APP_USER: ${APP_USER:-verifi}
+      APP_USER_PASSWORD: ${APP_USER_PASSWORD:?APP_USER_PASSWORD를 .env에 넣으세요}
+    # 기본은 서버 자신에게만 연다 → 앱 서버는 SSH 터널로 접근.
+    # 같은 VCN에서 직접 연결하려면 BIND_ADDR=0.0.0.0 + 보안 목록/firewalld에서 1521 허용 (앱 서버 사설 IP만)
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:1521:1521"
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+      - ./init:/container-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 40
+      start_period: 120s
+
+volumes:
+  oracle-data:

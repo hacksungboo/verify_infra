@@ -1,0 +1,68 @@
+# Verifi 앱 서버 (예: team-4-1, 146.56.139.138)
+#   cloudflared ──▶ frontend(nginx:80) ──▶ backend(FastAPI:8000) ──▶ db-tunnel:1521 ──SSH──▶ DB 서버 Oracle
+# 외부로 여는 포트는 없다. HTTPS는 Cloudflare 터널이 담당한다.
+#
+# 실행:  cp .env.example .env  (값 채우기)  →  docker compose pull && docker compose up -d
+
+name: verifi
+
+services:
+  frontend:
+    image: ${REGISTRY:-ghcr.io/hacksungboo}/verify-frontend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      - backend
+    # 디버깅할 때만 열기: 127.0.0.1 바인딩이라 외부에서는 안 보인다
+    ports:
+      - "127.0.0.1:8080:80"
+
+  backend:
+    image: ${REGISTRY:-ghcr.io/hacksungboo}/verify-backend:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: oracle+oracledb://${DB_USER:-verifi}:${DB_PASSWORD:?DB_PASSWORD를 .env에 넣으세요}@${DB_HOST:-db-tunnel}:${DB_PORT:-1521}/?service_name=${DB_SERVICE:-FREEPDB1}
+      DB_WAIT_SECONDS: "600"
+      DB_SERVER_LABEL: ${DB_SERVER_LABEL:-}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET을 .env에 넣으세요}
+      DEMO_EMAIL: ${DEMO_EMAIL:-demo@hanbit.co.kr}
+      DEMO_PASSWORD: ${DEMO_PASSWORD:-verifi2026}
+      AI_PROVIDER: ${AI_PROVIDER:-rule}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      PIPELINE_STEP_DELAY: ${PIPELINE_STEP_DELAY:-0.35}
+      PUBLIC_HOSTNAME: ${PUBLIC_HOSTNAME:-verifi.ccmall.shop}
+      CORS_ORIGINS: https://${PUBLIC_HOSTNAME:-verifi.ccmall.shop}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/health',timeout=2).status==200 else 1)"]
+      interval: 15s
+      timeout: 3s
+      retries: 10
+      start_period: 60s
+
+  # DB 서버의 1521 포트를 SSH(22번)로 끌어온다.
+  # OCI 보안 목록에서 1521을 열 권한이 없어도 동작한다. 직접 연결이 되면 COMPOSE_PROFILES에서 tunnel을 빼고 DB_HOST를 사설 IP로.
+  db-tunnel:
+    image: alpine:3.20
+    profiles: ["tunnel"]
+    restart: unless-stopped
+    command: >
+      sh -c "apk add --no-cache openssh-client autossh >/dev/null &&
+             cp /keys/db.key /tmp/db.key && chmod 600 /tmp/db.key &&
+             exec autossh -M 0 -N
+             -o StrictHostKeyChecking=accept-new
+             -o ServerAliveInterval=20 -o ServerAliveCountMax=3
+             -o ExitOnForwardFailure=yes
+             -i /tmp/db.key
+             -L 0.0.0.0:1521:127.0.0.1:1521
+             ${DB_SSH_USER:-opc}@${DB_SSH_HOST:-db-ssh-host-not-set}"
+    volumes:
+      - ${DB_SSH_KEY_PATH:-./keys/db.key}:/keys/db.key:ro
+
+  # Cloudflare 터널: verifi.ccmall.shop → http://frontend:80
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:?CLOUDFLARE_TUNNEL_TOKEN을 .env에 넣으세요}
+    depends_on:
+      - frontend
